@@ -1,0 +1,17 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Data
+data/*.csv
+data/*.db
+*.sqlite3
+
+# Secrets
+.env
+.env.local
+
+# OS
+.DS_Store

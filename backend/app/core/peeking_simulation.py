@@ -60,18 +60,74 @@ def simulate_one_experiment_with_peeking(
 
     return False  # never falsely triggered during the whole experiment
 
+
+def simulate_one_experiment_with_corrected_peeking(
+    daily_users_per_group: int = 50,
+    num_days: int = 30,
+    true_conversion_rate: float = 0.12,
+    seed: int = None,
+) -> bool:
+    """
+    Same as before, but uses a Bonferroni-corrected significance threshold
+    to account for the fact that we're checking multiple times.
+    """
+    rng = np.random.default_rng(seed)
+
+    # The key fix: divide our usual alpha (0.05) by the number of looks
+    corrected_alpha = 0.05 / num_days
+
+    control_conversions = 0
+    control_n = 0
+    treatment_conversions = 0
+    treatment_n = 0
+
+    for day in range(num_days):
+        new_control = rng.binomial(daily_users_per_group, true_conversion_rate)
+        new_treatment = rng.binomial(daily_users_per_group, true_conversion_rate)
+
+        control_conversions += new_control
+        control_n += daily_users_per_group
+        treatment_conversions += new_treatment
+        treatment_n += daily_users_per_group
+
+        # Use the corrected (stricter) alpha instead of the usual 0.05
+        result = two_proportion_z_test(
+            control_conversions, control_n,
+            treatment_conversions, treatment_n,
+            alpha=corrected_alpha,
+        )
+
+        if result.is_significant:
+            return True
+
+    return False
+
+
 if __name__ == "__main__":
     NUM_SIMULATIONS = 2000
-    false_positives = 0
 
+    # Test 1: naive peeking (no correction)
+    naive_false_positives = 0
     for i in range(NUM_SIMULATIONS):
-        result = simulate_one_experiment_with_peeking(seed=i)
-        if result:
-            false_positives += 1
+        if simulate_one_experiment_with_peeking(seed=i):
+            naive_false_positives += 1
+    naive_rate = naive_false_positives / NUM_SIMULATIONS
 
-    false_positive_rate = false_positives / NUM_SIMULATIONS
+    # Test 2: corrected peeking (Bonferroni correction)
+    corrected_false_positives = 0
+    for i in range(NUM_SIMULATIONS):
+        if simulate_one_experiment_with_corrected_peeking(seed=i):
+            corrected_false_positives += 1
+    corrected_rate = corrected_false_positives / NUM_SIMULATIONS
 
-    print(f"Number of simulated null experiments: {NUM_SIMULATIONS}")
-    print(f"False positives (falsely called 'significant'): {false_positives}")
-    print(f"Observed false positive rate: {false_positive_rate:.2%}")
-    print(f"Expected false positive rate (if checked ONLY once, at the end): 5.00%")
+    print(f"Number of simulated null experiments: {NUM_SIMULATIONS}\n")
+
+    print("--- WITHOUT correction (naive daily peeking) ---")
+    print(f"False positives: {naive_false_positives}")
+    print(f"False positive rate: {naive_rate:.2%}\n")
+
+    print("--- WITH Bonferroni correction ---")
+    print(f"False positives: {corrected_false_positives}")
+    print(f"False positive rate: {corrected_rate:.2%}\n")
+
+    print(f"Expected (target) false positive rate: 5.00%")
